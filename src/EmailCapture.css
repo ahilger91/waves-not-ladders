@@ -1,0 +1,108 @@
+/* EmailCapture — matches dark navy quiz aesthetic */
+.email-capture {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 2rem;
+  margin: 2rem 0;
+  text-align: center;
+}
+
+.email-capture__heading {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.email-capture__subtext {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+
+.email-capture__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.email-capture__input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.email-capture__input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.email-capture__input:focus {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.email-capture__submit {
+  background: #4f6ef7;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.8rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+  margin-top: 0.25rem;
+}
+
+.email-capture__submit:hover:not(:disabled) {
+  background: #3a5be0;
+}
+
+.email-capture__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.email-capture__error {
+  color: #ff7b7b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.email-capture__skip {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  margin-top: 1rem;
+  padding: 0.25rem 0.5rem;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.email-capture__skip:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Success state */
+.email-capture--success {
+  background: rgba(79, 110, 247, 0.12);
+  border-color: rgba(79, 110, 247, 0.3);
+}
+
+.email-capture__success-msg {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1rem;
+  margin: 0;
+}
