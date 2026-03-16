@@ -65,7 +65,7 @@ function ChooserScreen({ onSelect }) {
       <div className="ch-inner">
         <div className="ch-eyebrow">Career Assessment</div>
         <h1 className="ch-title">Waves<br/>Not <em>Ladders</em></h1>
-        <div className="ch-subtitle">How to find your way forward in a world that keeps changing</div>
+        <div className="ch-subtitle">How to find your way forward in a world that won't stop changing</div>
         <p className="ch-desc">Two versions of the same honest assessment — one for people just starting out, one for people already in the workforce. Pick the one that fits where you are.</p>
 
         <div className="ch-cards">
@@ -308,6 +308,18 @@ ${FONT}
 .retake-m:hover{color:#9ab8cc;border-color:#2e4a60;}
 .back-link{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#7a9ab0;cursor:pointer;transition:color .2s;margin-bottom:32px;}
 .back-link:hover{color:#9ab8cc;}
+.honest-wrap-m{margin-bottom:32px;}
+.honest-prompt-m{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;line-height:1.6;color:#d8eaf8;margin-bottom:20px;}
+.honest-textarea-m{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:16px;color:#d8eaf8;font-size:15px;font-family:'DM Sans',sans-serif;font-weight:300;line-height:1.7;resize:vertical;outline:none;transition:border-color 0.2s;}
+.honest-textarea-m::placeholder{color:rgba(255,255,255,0.3);}
+.honest-textarea-m:focus{border-color:rgba(0,180,216,0.5);}
+.result-step-m{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:#8aaac0;margin-bottom:32px;text-align:center;}
+.result-nav-m{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:48px;}
+.reflection-m{font-size:14px;line-height:1.85;color:#b8d4f0;font-weight:300;border-top:1px solid rgba(255,255,255,0.1);margin-top:28px;padding-top:24px;}
+.reflection-loading-m{font-size:13px;color:#8aaac0;font-style:italic;border-top:1px solid rgba(255,255,255,0.1);margin-top:28px;padding-top:24px;}
+.pdf-btn-m{display:block;width:100%;margin-top:24px;padding:14px;background:transparent;border:1px solid #2a4060;border-radius:4px;color:#8aaac0;font-size:12px;font-family:'DM Sans',sans-serif;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;}
+.pdf-btn-m:hover{border-color:#00b4d8;color:#00b4d8;}
+.email-screen-m{max-width:660px;margin:0 auto;padding:40px 24px 80px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;}
 `;
 
 function MidMatrix({ waveNav, internalAnchor, archetypeKey }) {
@@ -344,10 +356,13 @@ function MidMatrix({ waveNav, internalAnchor, archetypeKey }) {
 
 function MidQuiz({ onBack }) {
   const [section, setSection] = useState(0);
-  const [screen,  setScreen]  = useState("quiz");
+  const [screen,  setScreen]  = useState("quiz"); // "quiz"|"honest"|"email"|"results"
   const [answers, setAnswers] = useState(Object.fromEntries(Object.keys(MID_QUESTIONS).map(k=>[k,null])));
-  const [emailSkipped, setEmailSkipped] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [honestAnswer, setHonestAnswer] = useState('');
+  const [resultSection, setResultSection] = useState(0);
+  const [reflection, setReflection] = useState(null);
+  const [reflectionLoading, setReflectionLoading] = useState(false);
   const scores        = useMemo(()=>midComputeScores(answers),[answers]);
   const archetypeKey  = useMemo(()=>midGetArchetypeKey(scores),[scores]);
   const archetypeMeta = MID_ARCHETYPE_META[archetypeKey];
@@ -355,7 +370,7 @@ function MidQuiz({ onBack }) {
   const nextWaveTips  = useMemo(()=>archetypeMeta.nextWave(scores),[archetypeKey,scores]);
   const blindspots    = useMemo(()=>midGetBlindSpots(answers),[answers]);
   const setAnswer     = (id,v)=>setAnswers(p=>({...p,[id]:v}));
-  const reset         = ()=>{ setSection(0); setScreen("quiz"); setEmailSkipped(false); setAttempted(false); setAnswers(Object.fromEntries(Object.keys(MID_QUESTIONS).map(k=>[k,null]))); };
+  const reset         = ()=>{ setSection(0); setScreen("quiz"); setAttempted(false); setAnswers(Object.fromEntries(Object.keys(MID_QUESTIONS).map(k=>[k,null]))); setHonestAnswer(''); setResultSection(0); setReflection(null); setReflectionLoading(false); };
   const dimData = [
     {id:"nav",    label:"Career Navigation", sub:"Ladder ← → Waves",              score:scores.waveNav,        color:"#00b4d8", insight:midNavInsight(scores)},
     {id:"anchor", label:"Identity Anchor",   sub:"External ← → Internal",         score:scores.internalAnchor, color:"#52b788", insight:scores.internalAnchor>=7?"Well-anchored — your sense of self doesn't depend on what's in your email signature.":scores.internalAnchor>=4?"Partially grounded. The 'what do you do?' question still has some power over you.":"Your identity feels closely tied to your profession — the most common and most fragile foundation."},
@@ -363,13 +378,94 @@ function MidQuiz({ onBack }) {
     {id:"compass",label:"Compass Score",     sub:"Curiosity · Resilience · Agency",score:scores.compassScore,   color:"#f4a261", insight:scores.compassScore>=7?"Strong signal — values investment, risk-taking, growth-first decisions. The most durable career skill there is.":scores.compassScore>=4?"Moderate compass signal. The ingredients for purposeful exploration are present, but not all firing together yet.":"Low compass signal. This is the combination that separates purposeful exploration from aimless drift."},
   ];
 
+  async function fetchReflection(ans) {
+    if (!ans.trim()) return;
+    setReflectionLoading(true);
+    try {
+      const res = await fetch('/api/generate-reflection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archetypeKey, scores, honestAnswer: ans }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.reflection) setReflection(data.reflection);
+    } catch (e) { /* fail silently */ }
+    finally { setReflectionLoading(false); }
+  }
+
+  function goToEmail(ans) {
+    setHonestAnswer(ans);
+    setScreen('email');
+    fetchReflection(ans);
+  }
+
+  async function downloadPdf() {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+    const margin = 20;
+    let y = margin;
+    const pageH = doc.internal.pageSize.height;
+    const lh = 7;
+    function addText(text, opts = {}) {
+      const { size = 11, bold = false } = opts;
+      doc.setFontSize(size);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      const lines = doc.splitTextToSize(String(text), doc.internal.pageSize.width - margin * 2);
+      lines.forEach(line => {
+        if (y > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += lh;
+      });
+    }
+    function gap(n = 1) { y += lh * n; }
+
+    addText('Waves Not Ladders', { size: 20, bold: true });
+    addText('Mid-Career Assessment Report', { size: 13 });
+    gap();
+    addText(`${archetypeMeta.emoji}  ${archetypeMeta.name}`, { size: 16, bold: true });
+    addText(archetypeMeta.tagline, { size: 11 });
+    gap();
+    addText(archetypeDesc, { size: 11 });
+    if (reflection) {
+      gap();
+      addText('A Note on What You Wrote', { size: 12, bold: true });
+      gap(0.3);
+      addText(reflection, { size: 11 });
+    }
+    gap(1.5);
+    addText('Your Four Dimensions', { size: 14, bold: true });
+    gap(0.5);
+    dimData.forEach(d => {
+      addText(`${d.label}: ${d.score.toFixed(1)} / 10`, { size: 11, bold: true });
+      addText(d.insight, { size: 10 });
+      gap(0.5);
+    });
+    gap();
+    addText('The Blind Spot Check', { size: 14, bold: true });
+    gap(0.5);
+    if (blindspots.length === 0) {
+      addText('No major blind spots flagged.', { size: 11 });
+    } else {
+      blindspots.forEach(({ qId, score, note }) => {
+        addText(`Q${qId} (${score}/10): "${MID_QUESTIONS[qId].text}"`, { size: 10, bold: true });
+        addText(note, { size: 10 });
+        gap(0.5);
+      });
+    }
+    gap();
+    addText('Your Next Wave', { size: 14, bold: true });
+    gap(0.5);
+    nextWaveTips.forEach(tip => { addText(`• ${tip}`, { size: 11 }); gap(0.3); });
+    doc.save('waves-not-ladders-report.pdf');
+  }
+
   if (screen === "quiz") {
     const sec    = MID_SECTIONS[section];
     const isLast = section === MID_SECTIONS.length - 1;
     return (
       <div className="app-mid"><style>{midCss}</style>
         <div className="quiz-m">
-          <div className="back-link" onClick={onBack}>← Retake Assessment</div>
+          <div className="back-link" onClick={onBack}>← Back to Assessment Home</div>
           <div className="prog-wrap-m">
             <div className="prog-meta-m"><span>{sec.label}</span><span>Part {section+1} of {MID_SECTIONS.length}</span></div>
             <div className="prog-bar-m"><div className="prog-fill-m" style={{width:`${((section+1)/MID_SECTIONS.length)*100}%`}}/></div>
@@ -399,68 +495,138 @@ function MidQuiz({ onBack }) {
             {section>0&&<button className="btn-nav-m btn-back-m" onClick={()=>{setAttempted(false);setSection(s=>s-1);}}>← Back</button>}
             {!isLast
               ?<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setAttempted(false);setSection(s=>s+1);}}>Continue →</button>
-              :<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("results");}}>See My Report →</button>}
+              :<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>See My Report →</button>}
           </div>
         </div>
       </div>
     );
   }
 
+  if (screen === "honest") {
+    return (
+      <div className="app-mid"><style>{midCss}</style>
+        <div className="quiz-m">
+          <div className="back-link" onClick={()=>setScreen("quiz")}>← Back</div>
+          <div className="sec-head-m">
+            <div className="sec-tag-m" style={{color:"#00b4d8"}}>Before You See Your Results</div>
+            <h2 className="sec-title-lrg-m">One Honest Question</h2>
+          </div>
+          <div className="honest-wrap-m">
+            <p className="honest-prompt-m">The thing I'm most afraid to admit about my career right now is…</p>
+            <textarea
+              className="honest-textarea-m"
+              placeholder="You don't have to answer this. If you do, it stays between you and your report."
+              value={honestAnswer}
+              onChange={e=>setHonestAnswer(e.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="q-nav-m">
+            <button className="btn-nav-m btn-back-m" onClick={()=>goToEmail('')}>Skip</button>
+            <button className="btn-nav-m btn-fwd-m" onClick={()=>goToEmail(honestAnswer)}>Continue →</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "email") {
+    return (
+      <div className="app-mid"><style>{midCss}</style>
+        <div className="email-screen-m">
+          <EmailCapture
+            archetype={archetypeMeta.name}
+            heading="Your results are ready."
+            subtext="Enter your name and email for occasional career-related content."
+            onComplete={()=>setScreen('results')}
+            onSkip={()=>setScreen('results')}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const RESULT_LABELS = ["Your Archetype","Four Dimensions","Blind Spot Check","Your Next Wave"];
   return (
     <div className="app-mid"><style>{midCss}</style>
       <div className="results-m">
-        <div className="back-link" onClick={onBack}>← Retake Assessment</div>
-        <div className="r-eyebrow-m">Your Career Report</div>
-        <div className="arch-card-m" style={{background:archetypeMeta.bg}}>
-          <span className="arch-emoji-m">{archetypeMeta.emoji}</span>
-          <h2 className="arch-name-m" style={{color:archetypeMeta.color}}>{archetypeMeta.name}</h2>
-          <div className="arch-tagline-m" style={{color:archetypeMeta.color}}>{archetypeMeta.tagline}</div>
-          <p className="arch-desc-m">{archetypeDesc}</p>
-          <MidMatrix waveNav={scores.waveNav} internalAnchor={scores.internalAnchor} archetypeKey={archetypeKey}/>
-        </div>
-        <div className="divider-m"/>
-        <div className="sec-title-sm-m">Your Four Dimensions</div>
-        <div className="sec-sub-m">The same score can mean very different things depending on the combination.</div>
-        <div className="dim-grid-m">
-          {dimData.map(d=>(
-            <div key={d.id} className="dim-card-m">
-              <div className="dim-name-m" style={{color:d.color}}>{d.label}</div>
-              <div className="dim-sub-m">{d.sub}</div>
-              <div className="dim-bar-bg-m"><div className="dim-bar-fill-m" style={{width:`${(d.score/10)*100}%`,background:d.color}}/></div>
-              <div className="dim-score-m" style={{color:d.color}}>{d.score.toFixed(1)}<span> / 10</span></div>
-              <div className="dim-insight-m">{d.insight}</div>
-            </div>
-          ))}
-        </div>
-        <div className="divider-m"/>
-        <div className="sec-title-sm-m">The Blind Spot Check</div>
-        <div className="bs-intro-m">Some high scores here are good news. Others are the Lachesis Trap dressed up as confidence.</div>
-        {blindspots.length===0?<div className="no-bs-m">✓ No major blind spots flagged. Your answers suggest a realistic, clear-eyed read on your situation.</div>
-          :blindspots.map(({qId,score,note})=>(
-            <div key={qId} className="bs-card-m">
-              <div className="bs-label-m">You scored {score}/10 · Question {qId}</div>
-              <div className="bs-q-m">"{MID_QUESTIONS[qId].text}"</div>
-              <div className="bs-note-m">⚠ {note}</div>
-            </div>
-          ))}
+        <div className="back-link" onClick={onBack}>← Back to Assessment Home</div>
+        <div className="result-step-m">{resultSection+1} of 4 — {RESULT_LABELS[resultSection]}</div>
 
-        {!emailSkipped && (
-          <EmailCapture
-            archetype={archetypeMeta.name}
-            onSkip={() => setEmailSkipped(true)}
-          />
+        {resultSection === 0 && (
+          <>
+            <div className="r-eyebrow-m">Your Career Report</div>
+            <div className="arch-card-m" style={{background:archetypeMeta.bg}}>
+              <span className="arch-emoji-m">{archetypeMeta.emoji}</span>
+              <h2 className="arch-name-m" style={{color:archetypeMeta.color}}>{archetypeMeta.name}</h2>
+              <div className="arch-tagline-m" style={{color:archetypeMeta.color}}>{archetypeMeta.tagline}</div>
+              <p className="arch-desc-m">{archetypeDesc}</p>
+              {honestAnswer.trim() && (
+                reflectionLoading
+                  ? <p className="reflection-loading-m">Reading your results…</p>
+                  : reflection && <p className="reflection-m">{reflection}</p>
+              )}
+              <MidMatrix waveNav={scores.waveNav} internalAnchor={scores.internalAnchor} archetypeKey={archetypeKey}/>
+            </div>
+          </>
         )}
 
-        <div className="divider-m"/>
-        <div className="sec-title-sm-m">Your Next Wave</div>
-        <div className="sec-sub-m">Not thinking exercises — doing exercises. Specific to your score combination.</div>
-        <div className="nw-card-m">
-          <div className="nw-intro-m">Three places worth putting your attention, based on where you actually landed.</div>
-          {nextWaveTips.map((tip,i)=>(
-            <div key={i} className="nw-item-m"><div className="nw-dot-m"/><div className="nw-text-m">{tip}</div></div>
-          ))}
+        {resultSection === 1 && (
+          <>
+            <div className="sec-title-sm-m">Your Four Dimensions</div>
+            <div className="sec-sub-m">The same score can mean very different things depending on the combination.</div>
+            <div className="dim-grid-m">
+              {dimData.map(d=>(
+                <div key={d.id} className="dim-card-m">
+                  <div className="dim-name-m" style={{color:d.color}}>{d.label}</div>
+                  <div className="dim-sub-m">{d.sub}</div>
+                  <div className="dim-bar-bg-m"><div className="dim-bar-fill-m" style={{width:`${(d.score/10)*100}%`,background:d.color}}/></div>
+                  <div className="dim-score-m" style={{color:d.color}}>{d.score.toFixed(1)}<span> / 10</span></div>
+                  <div className="dim-insight-m">{d.insight}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {resultSection === 2 && (
+          <>
+            <div className="sec-title-sm-m">The Blind Spot Check</div>
+            <div className="bs-intro-m">Some high scores here are good news. Others are the Lachesis Trap dressed up as confidence.</div>
+            {blindspots.length===0?<div className="no-bs-m">✓ No major blind spots flagged. Your answers suggest a realistic, clear-eyed read on your situation.</div>
+              :blindspots.map(({qId,score,note})=>(
+                <div key={qId} className="bs-card-m">
+                  <div className="bs-label-m">You scored {score}/10 · Question {qId}</div>
+                  <div className="bs-q-m">"{MID_QUESTIONS[qId].text}"</div>
+                  <div className="bs-note-m">⚠ {note}</div>
+                </div>
+              ))}
+          </>
+        )}
+
+        {resultSection === 3 && (
+          <>
+            <div className="sec-title-sm-m">Your Next Wave</div>
+            <div className="sec-sub-m">Not thinking exercises — doing exercises. Specific to your score combination.</div>
+            <div className="nw-card-m">
+              <div className="nw-intro-m">Three places worth putting your attention, based on where you actually landed.</div>
+              {nextWaveTips.map((tip,i)=>(
+                <div key={i} className="nw-item-m"><div className="nw-dot-m"/><div className="nw-text-m">{tip}</div></div>
+              ))}
+            </div>
+            <button className="pdf-btn-m" onClick={downloadPdf}>↓ Download Full Report (PDF)</button>
+            <button className="retake-m" onClick={reset}>Retake Assessment</button>
+          </>
+        )}
+
+        <div className="result-nav-m">
+          {resultSection > 0
+            ? <button className="btn-nav-m btn-back-m" onClick={()=>setResultSection(s=>s-1)}>← Back</button>
+            : <span/>}
+          {resultSection < 3
+            ? <button className="btn-nav-m btn-fwd-m" onClick={()=>setResultSection(s=>s+1)}>Next →</button>
+            : <span/>}
         </div>
-        <button className="retake-m" onClick={reset}>Retake Assessment</button>
       </div>
     </div>
   );
@@ -664,6 +830,18 @@ ${FONT}
 .retake-e:hover{color:#c0d8e8;border-color:#2e4a60;}
 .back-link-e{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8aaac0;cursor:pointer;transition:color .2s;margin-bottom:32px;}
 .back-link-e:hover{color:#c0d8e8;}
+.honest-wrap-e{margin-bottom:32px;}
+.honest-prompt-e{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;line-height:1.6;color:#d8eaf8;margin-bottom:20px;}
+.honest-textarea-e{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:16px;color:#d8eaf8;font-size:15px;font-family:'DM Sans',sans-serif;font-weight:300;line-height:1.7;resize:vertical;outline:none;transition:border-color 0.2s;}
+.honest-textarea-e::placeholder{color:rgba(255,255,255,0.3);}
+.honest-textarea-e:focus{border-color:rgba(244,162,97,0.5);}
+.result-step-e{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:#8aaac0;margin-bottom:32px;text-align:center;}
+.result-nav-e{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:48px;}
+.reflection-e{font-size:14px;line-height:1.85;color:#cce0f2;font-weight:300;border-top:1px solid rgba(255,255,255,0.1);margin-top:28px;padding-top:24px;}
+.reflection-loading-e{font-size:13px;color:#8aaac0;font-style:italic;border-top:1px solid rgba(255,255,255,0.1);margin-top:28px;padding-top:24px;}
+.pdf-btn-e{display:block;width:100%;margin-top:24px;padding:14px;background:transparent;border:1px solid #2a4060;border-radius:4px;color:#8aaac0;font-size:12px;font-family:'DM Sans',sans-serif;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;}
+.pdf-btn-e:hover{border-color:#f4a261;color:#f4a261;}
+.email-screen-e{max-width:660px;margin:0 auto;padding:40px 24px 80px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;}
 `;
 
 function EarlyMatrix({ waveNav, internalAnchor, archetypeKey }) {
@@ -700,10 +878,13 @@ function EarlyMatrix({ waveNav, internalAnchor, archetypeKey }) {
 
 function EarlyQuiz({ onBack }) {
   const [section, setSection] = useState(0);
-  const [screen,  setScreen]  = useState("quiz");
+  const [screen,  setScreen]  = useState("quiz"); // "quiz"|"honest"|"email"|"results"
   const [answers, setAnswers] = useState(Object.fromEntries(Object.keys(EARLY_QUESTIONS).map(k=>[k,null])));
-  const [emailSkipped, setEmailSkipped] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [honestAnswer, setHonestAnswer] = useState('');
+  const [resultSection, setResultSection] = useState(0);
+  const [reflection, setReflection] = useState(null);
+  const [reflectionLoading, setReflectionLoading] = useState(false);
   const scores        = useMemo(()=>earlyComputeScores(answers),[answers]);
   const archetypeKey  = useMemo(()=>earlyGetArchetypeKey(scores),[scores]);
   const archetypeMeta = EARLY_ARCHETYPE_META[archetypeKey];
@@ -711,7 +892,7 @@ function EarlyQuiz({ onBack }) {
   const nextWaveTips  = useMemo(()=>archetypeMeta.nextWave(scores),[archetypeKey,scores]);
   const blindspots    = useMemo(()=>earlyGetBlindSpots(answers,scores),[answers,scores]);
   const setAnswer     = (id,v)=>setAnswers(p=>({...p,[id]:v}));
-  const reset         = ()=>{ setSection(0); setScreen("quiz"); setEmailSkipped(false); setAttempted(false); setAnswers(Object.fromEntries(Object.keys(EARLY_QUESTIONS).map(k=>[k,null]))); };
+  const reset         = ()=>{ setSection(0); setScreen("quiz"); setAttempted(false); setAnswers(Object.fromEntries(Object.keys(EARLY_QUESTIONS).map(k=>[k,null]))); setHonestAnswer(''); setResultSection(0); setReflection(null); setReflectionLoading(false); };
   const dimData = [
     {id:"nav",    label:"Career Navigation", sub:"Ladder ← → Waves",               score:scores.waveNav,        color:"#00b4d8", insight:earlyNavInsight(scores)},
     {id:"anchor", label:"Identity Anchor",   sub:"External ← → Internal",          score:scores.internalAnchor, color:"#52b788", insight:scores.internalAnchor>=7?"Well-anchored — your sense of self isn't riding on having the right answer to 'what do you want to do.' That's more unusual than it sounds.":scores.internalAnchor>=4?"Partially grounded. Some of your direction is driven by what others expect, and some by what genuinely excites you. Worth understanding which is which.":"Your direction appears heavily influenced by external expectations. That's very common. It's also worth looking at honestly."},
@@ -719,13 +900,95 @@ function EarlyQuiz({ onBack }) {
     {id:"purpose",label:"Values & Purpose",  sub:"Clarity & Self-Knowledge",        score:scores.purposeScore,   color:"#e76f51", insight:scores.purposeScore>=7?"Strong values and self-knowledge signal — you know what you stand for and you're building self-awareness about how you work best.":scores.purposeScore>=4?"Some values clarity, but still developing. That's normal at this stage — keep investing in it rather than defaulting to external signals.":"Values and self-knowledge are showing up low. Decisions are probably being made from external signals rather than internal ones. This is the most important area to invest in."},
   ];
 
+  async function fetchReflection(ans) {
+    if (!ans.trim()) return;
+    setReflectionLoading(true);
+    try {
+      const res = await fetch('/api/generate-reflection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archetypeKey, scores, honestAnswer: ans }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.reflection) setReflection(data.reflection);
+    } catch (e) { /* fail silently */ }
+    finally { setReflectionLoading(false); }
+  }
+
+  function goToEmail(ans) {
+    setHonestAnswer(ans);
+    setScreen('email');
+    fetchReflection(ans);
+  }
+
+  async function downloadPdf() {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+    const margin = 20;
+    let y = margin;
+    const pageH = doc.internal.pageSize.height;
+    const lh = 7;
+    function addText(text, opts = {}) {
+      const { size = 11, bold = false } = opts;
+      doc.setFontSize(size);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      const lines = doc.splitTextToSize(String(text), doc.internal.pageSize.width - margin * 2);
+      lines.forEach(line => {
+        if (y > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += lh;
+      });
+    }
+    function gap(n = 1) { y += lh * n; }
+
+    addText('Waves Not Ladders', { size: 20, bold: true });
+    addText('Early Career Assessment Report', { size: 13 });
+    gap();
+    addText(`${archetypeMeta.emoji}  ${archetypeMeta.name}`, { size: 16, bold: true });
+    addText(archetypeMeta.tagline, { size: 11 });
+    gap();
+    addText(archetypeDesc, { size: 11 });
+    if (reflection) {
+      gap();
+      addText('A Note on What You Wrote', { size: 12, bold: true });
+      gap(0.3);
+      addText(reflection, { size: 11 });
+    }
+    gap(1.5);
+    addText('Your Four Dimensions', { size: 14, bold: true });
+    gap(0.5);
+    dimData.forEach(d => {
+      addText(`${d.label}: ${d.score.toFixed(1)} / 10`, { size: 11, bold: true });
+      addText(d.insight, { size: 10 });
+      gap(0.5);
+    });
+    gap();
+    addText('The Honest Check', { size: 14, bold: true });
+    gap(0.5);
+    if (blindspots.length === 0) {
+      addText('No major blind spots flagged.', { size: 11 });
+    } else {
+      blindspots.forEach(({ qId, score, note }) => {
+        addText(`Q${qId} (${score}/10): "${EARLY_QUESTIONS[qId].text}"`, { size: 10, bold: true });
+        addText(note, { size: 10 });
+        gap(0.5);
+      });
+    }
+    gap();
+    addText('Your Next Wave', { size: 14, bold: true });
+    gap(0.5);
+    nextWaveTips.forEach(tip => { addText(`• ${tip}`, { size: 11 }); gap(0.3); });
+    doc.save('waves-not-ladders-report.pdf');
+  }
+
   if (screen === "quiz") {
     const sec    = EARLY_SECTIONS[section];
     const isLast = section === EARLY_SECTIONS.length - 1;
+    const qOffset = EARLY_SECTIONS.slice(0, section).reduce((sum, s) => sum + s.questions.length, 0);
     return (
       <div className="app-early"><style>{earlyCss}</style>
         <div className="quiz-e">
-          <div className="back-link-e" onClick={onBack}>← Retake Assessment</div>
+          <div className="back-link-e" onClick={onBack}>← Back to Assessment Home</div>
           <div className="prog-wrap-e">
             <div className="prog-meta-e"><span>{sec.label}</span><span>Part {section+1} of {EARLY_SECTIONS.length}</span></div>
             <div className="prog-bar-e"><div className="prog-fill-e" style={{width:`${((section+1)/EARLY_SECTIONS.length)*100}%`}}/></div>
@@ -734,9 +997,9 @@ function EarlyQuiz({ onBack }) {
             <div className="sec-tag-e" style={{color:sec.color}}>{sec.subtitle}</div>
             <h2 className="sec-title-lrg-e">{sec.label}</h2>
           </div>
-          {sec.questions.map(id=>(
+          {sec.questions.map((id, idx)=>(
             <div key={id} className={`q-card-e${attempted && answers[id]===null ? " q-unanswered-e" : ""}`}>
-              <div className="q-num-e">Question {id}</div>
+              <div className="q-num-e">Question {qOffset + idx + 1}</div>
               <div className="q-text-e">{EARLY_QUESTIONS[id].text}</div>
               <div className="likert-e">
                 {LIKERT_OPTIONS.map(opt=>(
@@ -755,68 +1018,138 @@ function EarlyQuiz({ onBack }) {
             {section>0&&<button className="btn-nav-e btn-back-e" onClick={()=>{setAttempted(false);setSection(s=>s-1);}}>← Back</button>}
             {!isLast
               ?<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setAttempted(false);setSection(s=>s+1);}}>Continue →</button>
-              :<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("results");}}>See My Report →</button>}
+              :<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>See My Report →</button>}
           </div>
         </div>
       </div>
     );
   }
 
+  if (screen === "honest") {
+    return (
+      <div className="app-early"><style>{earlyCss}</style>
+        <div className="quiz-e">
+          <div className="back-link-e" onClick={()=>setScreen("quiz")}>← Back</div>
+          <div className="sec-head-e">
+            <div className="sec-tag-e" style={{color:"#f4a261"}}>Before You See Your Results</div>
+            <h2 className="sec-title-lrg-e">One Honest Question</h2>
+          </div>
+          <div className="honest-wrap-e">
+            <p className="honest-prompt-e">The thing I'm most afraid to admit about my career right now is…</p>
+            <textarea
+              className="honest-textarea-e"
+              placeholder="You don't have to answer this. If you do, it stays between you and your report."
+              value={honestAnswer}
+              onChange={e=>setHonestAnswer(e.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="q-nav-e">
+            <button className="btn-nav-e btn-back-e" onClick={()=>goToEmail('')}>Skip</button>
+            <button className="btn-nav-e btn-fwd-e" onClick={()=>goToEmail(honestAnswer)}>Continue →</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "email") {
+    return (
+      <div className="app-early"><style>{earlyCss}</style>
+        <div className="email-screen-e">
+          <EmailCapture
+            archetype={archetypeMeta.name}
+            heading="Your results are ready."
+            subtext="Enter your name and email for occasional career-related content."
+            onComplete={()=>setScreen('results')}
+            onSkip={()=>setScreen('results')}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const RESULT_LABELS = ["Your Archetype","Four Dimensions","Honest Check","Your Next Wave"];
   return (
     <div className="app-early"><style>{earlyCss}</style>
       <div className="results-e">
-        <div className="back-link-e" onClick={onBack}>← Retake Assessment</div>
-        <div className="r-eyebrow-e">Your Career Report</div>
-        <div className="arch-card-e" style={{background:archetypeMeta.bg}}>
-          <span className="arch-emoji-e">{archetypeMeta.emoji}</span>
-          <h2 className="arch-name-e" style={{color:archetypeMeta.color}}>{archetypeMeta.name}</h2>
-          <div className="arch-tagline-e" style={{color:archetypeMeta.color}}>{archetypeMeta.tagline}</div>
-          <p className="arch-desc-e">{archetypeDesc}</p>
-          <EarlyMatrix waveNav={scores.waveNav} internalAnchor={scores.internalAnchor} archetypeKey={archetypeKey}/>
-        </div>
-        <div className="divider-e"/>
-        <div className="sec-title-sm-e">Your Four Dimensions</div>
-        <div className="sec-sub-e">The same score can mean very different things depending on the combination. Read these together, not in isolation.</div>
-        <div className="dim-grid-e">
-          {dimData.map(d=>(
-            <div key={d.id} className="dim-card-e">
-              <div className="dim-name-e" style={{color:d.color}}>{d.label}</div>
-              <div className="dim-sub-e">{d.sub}</div>
-              <div className="dim-bar-bg-e"><div className="dim-bar-fill-e" style={{width:`${(d.score/10)*100}%`,background:d.color}}/></div>
-              <div className="dim-score-e" style={{color:d.color}}>{d.score.toFixed(1)}<span> / 10</span></div>
-              <div className="dim-insight-e">{d.insight}</div>
-            </div>
-          ))}
-        </div>
-        <div className="divider-e"/>
-        <div className="sec-title-sm-e">The Honest Check</div>
-        <div className="bs-intro-e">A few places worth a second look — not to add to the pressure, but because seeing them clearly is the first step to moving through them.</div>
-        {blindspots.length===0?<div className="no-bs-e">✓ No major blind spots flagged. Your answers suggest a grounded, honest read on where you are. That's a real foundation to build from.</div>
-          :blindspots.map(({qId,score,note})=>(
-            <div key={qId} className="bs-card-e">
-              <div className="bs-label-e">You scored {score}/10 · Question {qId}</div>
-              <div className="bs-q-e">"{EARLY_QUESTIONS[qId].text}"</div>
-              <div className="bs-note-e">⚠ {note}</div>
-            </div>
-          ))}
+        <div className="back-link-e" onClick={onBack}>← Back to Assessment Home</div>
+        <div className="result-step-e">{resultSection+1} of 4 — {RESULT_LABELS[resultSection]}</div>
 
-        {!emailSkipped && (
-          <EmailCapture
-            archetype={archetypeMeta.name}
-            onSkip={() => setEmailSkipped(true)}
-          />
+        {resultSection === 0 && (
+          <>
+            <div className="r-eyebrow-e">Your Career Report</div>
+            <div className="arch-card-e" style={{background:archetypeMeta.bg}}>
+              <span className="arch-emoji-e">{archetypeMeta.emoji}</span>
+              <h2 className="arch-name-e" style={{color:archetypeMeta.color}}>{archetypeMeta.name}</h2>
+              <div className="arch-tagline-e" style={{color:archetypeMeta.color}}>{archetypeMeta.tagline}</div>
+              <p className="arch-desc-e">{archetypeDesc}</p>
+              {honestAnswer.trim() && (
+                reflectionLoading
+                  ? <p className="reflection-loading-e">Reading your results…</p>
+                  : reflection && <p className="reflection-e">{reflection}</p>
+              )}
+              <EarlyMatrix waveNav={scores.waveNav} internalAnchor={scores.internalAnchor} archetypeKey={archetypeKey}/>
+            </div>
+          </>
         )}
 
-        <div className="divider-e"/>
-        <div className="sec-title-sm-e">Your Next Wave</div>
-        <div className="sec-sub-e">Not things to think about — things to do. Pick one and actually do it.</div>
-        <div className="nw-card-e">
-          <div className="nw-intro-e">Three starting points, based on your score combination.</div>
-          {nextWaveTips.map((tip,i)=>(
-            <div key={i} className="nw-item-e"><div className="nw-dot-e"/><div className="nw-text-e">{tip}</div></div>
-          ))}
+        {resultSection === 1 && (
+          <>
+            <div className="sec-title-sm-e">Your Four Dimensions</div>
+            <div className="sec-sub-e">The same score can mean very different things depending on the combination. Read these together, not in isolation.</div>
+            <div className="dim-grid-e">
+              {dimData.map(d=>(
+                <div key={d.id} className="dim-card-e">
+                  <div className="dim-name-e" style={{color:d.color}}>{d.label}</div>
+                  <div className="dim-sub-e">{d.sub}</div>
+                  <div className="dim-bar-bg-e"><div className="dim-bar-fill-e" style={{width:`${(d.score/10)*100}%`,background:d.color}}/></div>
+                  <div className="dim-score-e" style={{color:d.color}}>{d.score.toFixed(1)}<span> / 10</span></div>
+                  <div className="dim-insight-e">{d.insight}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {resultSection === 2 && (
+          <>
+            <div className="sec-title-sm-e">The Honest Check</div>
+            <div className="bs-intro-e">A few places worth a second look — not to add to the pressure, but because seeing them clearly is the first step to moving through them.</div>
+            {blindspots.length===0?<div className="no-bs-e">✓ No major blind spots flagged. Your answers suggest a grounded, honest read on where you are. That's a real foundation to build from.</div>
+              :blindspots.map(({qId,score,note})=>(
+                <div key={qId} className="bs-card-e">
+                  <div className="bs-label-e">You scored {score}/10 · Question {qId}</div>
+                  <div className="bs-q-e">"{EARLY_QUESTIONS[qId].text}"</div>
+                  <div className="bs-note-e">⚠ {note}</div>
+                </div>
+              ))}
+          </>
+        )}
+
+        {resultSection === 3 && (
+          <>
+            <div className="sec-title-sm-e">Your Next Wave</div>
+            <div className="sec-sub-e">Not things to think about — things to do. Pick one and actually do it.</div>
+            <div className="nw-card-e">
+              <div className="nw-intro-e">Three starting points, based on your score combination.</div>
+              {nextWaveTips.map((tip,i)=>(
+                <div key={i} className="nw-item-e"><div className="nw-dot-e"/><div className="nw-text-e">{tip}</div></div>
+              ))}
+            </div>
+            <button className="pdf-btn-e" onClick={downloadPdf}>↓ Download Full Report (PDF)</button>
+            <button className="retake-e" onClick={reset}>Retake Assessment</button>
+          </>
+        )}
+
+        <div className="result-nav-e">
+          {resultSection > 0
+            ? <button className="btn-nav-e btn-back-e" onClick={()=>setResultSection(s=>s-1)}>← Back</button>
+            : <span/>}
+          {resultSection < 3
+            ? <button className="btn-nav-e btn-fwd-e" onClick={()=>setResultSection(s=>s+1)}>Next →</button>
+            : <span/>}
         </div>
-        <button className="retake-e" onClick={reset}>Retake Assessment</button>
       </div>
     </div>
   );

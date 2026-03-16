@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import './EmailCapture.css'
 
-export default function EmailCapture({ archetype, onSkip }) {
+export default function EmailCapture({
+  archetype,
+  heading = 'Want to go deeper?',
+  subtext = 'Get resources and ideas tailored to your archetype — delivered to your inbox.',
+  onComplete,
+  onSkip,
+}) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('idle') // idle | submitting | success | error
@@ -16,30 +22,32 @@ export default function EmailCapture({ archetype, onSkip }) {
     const formId = import.meta.env.VITE_KIT_FORM_ID
 
     try {
-      const res = await fetch(
-        `https://api.convertkit.com/v3/forms/${formId}/subscribe`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
-            first_name: name,
-            email,
-            tags: [archetype],
-          }),
-        }
-      )
+      const url = `https://api.convertkit.com/v3/forms/${formId}/subscribe`
+      const body = JSON.stringify({ api_key: apiKey, first_name: name, email, tags: [archetype] })
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+
+      const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
         throw new Error(data.message || 'Subscription failed')
       }
 
       setStatus('success')
+      setTimeout(() => onComplete?.(), 1500)
     } catch (err) {
       setErrorMsg(err.message || 'Something went wrong. Please try again.')
       setStatus('error')
     }
+  }
+
+  function handleSkip() {
+    onSkip?.()
+    onComplete?.()
   }
 
   if (status === 'success') {
@@ -54,10 +62,8 @@ export default function EmailCapture({ archetype, onSkip }) {
 
   return (
     <div className="email-capture">
-      <h3 className="email-capture__heading">Want to go deeper?</h3>
-      <p className="email-capture__subtext">
-        Get resources and ideas tailored to your archetype — delivered to your inbox.
-      </p>
+      <h3 className="email-capture__heading">{heading}</h3>
+      <p className="email-capture__subtext">{subtext}</p>
 
       <form className="email-capture__form" onSubmit={handleSubmit}>
         <input
@@ -88,11 +94,11 @@ export default function EmailCapture({ archetype, onSkip }) {
           type="submit"
           disabled={status === 'submitting'}
         >
-          {status === 'submitting' ? 'Subscribing…' : 'Send me resources'}
+          {status === 'submitting' ? 'Submitting…' : 'Submit'}
         </button>
       </form>
 
-      <button className="email-capture__skip" onClick={onSkip} type="button">
+      <button className="email-capture__skip" onClick={handleSkip} type="button">
         Skip
       </button>
     </div>
