@@ -135,7 +135,7 @@ const MID_QUESTIONS = {
   5:  { text:"I relish the cocktail-party 'what do you do?' question. I proudly identify with my profession." },
   6:  { text:"I have been able to avoid the 'I'll-be-happy-when' thinking. I have not attached my happiness, self-worth, or esteem to things like title or pay." },
   7:  { text:"I love it when other people share their accomplishments and promotions. I'm genuinely happy for them, and their success doesn't inspire negative self-talk in me." },
-  8:  { text:"I love what I do. I get out of bed excited to go to work most Mondays." },
+  8:  { text:"I love what I do. I get out of bed excited to go to work most days." },
   9:  { text:"I invest time to consider my values and purpose. It's always a work in progress, but I can make life decisions based on who I am and who I want to be." },
   10: { text:"My work matters. I'm making a difference, and the work is closely aligned with my values and purpose." },
   11: { text:"The organization I work for does an excellent job with career-pathing. Where I'm going and how I get there is crystal clear." },
@@ -495,7 +495,7 @@ function MidQuiz({ onBack }) {
             {section>0&&<button className="btn-nav-m btn-back-m" onClick={()=>{setAttempted(false);setSection(s=>s-1);}}>← Back</button>}
             {!isLast
               ?<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setAttempted(false);setSection(s=>s+1);}}>Continue →</button>
-              :<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>See My Report →</button>}
+              :<button className="btn-nav-m btn-fwd-m" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>Continue →</button>}
           </div>
         </div>
       </div>
@@ -1018,7 +1018,7 @@ function EarlyQuiz({ onBack }) {
             {section>0&&<button className="btn-nav-e btn-back-e" onClick={()=>{setAttempted(false);setSection(s=>s-1);}}>← Back</button>}
             {!isLast
               ?<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setAttempted(false);setSection(s=>s+1);}}>Continue →</button>
-              :<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>See My Report →</button>}
+              :<button className="btn-nav-e btn-fwd-e" onClick={()=>{if(sec.questions.some(id=>answers[id]===null)){setAttempted(true);return;}setScreen("honest");}}>Continue →</button>}
           </div>
         </div>
       </div>

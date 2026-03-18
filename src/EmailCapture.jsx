@@ -54,7 +54,7 @@ export default function EmailCapture({
     return (
       <div className="email-capture email-capture--success">
         <p className="email-capture__success-msg">
-          You're in. Check your inbox for what comes next.
+          Thanks. Check your email to confirm.
         </p>
       </div>
     )
